@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DocCompare - 智能文档比对工具</title>
+  <link rel="stylesheet" href="css/style.css">
+
+  <!-- 本地依赖库 (优先) + CDN fallback -->
+  <!-- PDF.js -->
+  <script src="lib/pdf.min.js"></script>
+  <script>
+    if (typeof pdfjsLib === 'undefined') {
+      document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"><\/script>');
+    }
+  </script>
+  <script>
+    (function() {
+      if (typeof pdfjsLib === 'undefined') return;
+      // 优先尝试本地worker
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 'lib/pdf.worker.min.js';
+    })();
+  </script>
+
+  <!-- Diff-Match-Patch -->
+  <script src="lib/diff_match_patch.min.js"></script>
+  <script>
+    if (typeof diff_match_patch === 'undefined') {
+      document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/diff-match-patch/1.0.5/diff_match_patch.min.js"><\/script>');
+    }
+  </script>
+
+  <!-- Mammoth.js -->
+  <script src="lib/mammoth.browser.min.js"></script>
+  <script>
+    if (typeof mammoth === 'undefined') {
+      document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"><\/script>');
+    }
+  </script>
+
+  <!-- Tesseract.js (OCR) - v4 for stable API -->
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
+</head>
+<body>
+  <div id="app">
+
+    <!-- ========== Header ========== -->
+    <header class="app-header">
+      <div class="app-logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+          <polyline points="14 2 14 8 20 8"></polyline>
+          <line x1="9" y1="15" x2="15" y2="15"></line>
+          <path d="M9 9l3 3-3 3" stroke="currentColor" stroke-width="2" fill="none"></path>
+        </svg>
+        <h1>Doc<span>Compare</span></h1>
+      </div>
+      <div class="header-actions">
+        <span style="font-size:12px; color:var(--gray-400);">智能文档比对工具</span>
+      </div>
+    </header>
+
+    <!-- ========== Upload View ========== -->
+    <div id="uploadView" class="upload-view">
+      <div class="upload-hero">
+        <h2>智能文档比对</h2>
+        <p>上传两份文档，自动识别差异并高亮标注。支持 PDF、Word 格式，扫描件自动 OCR 识别。所有处理均在浏览器本地完成，保障数据安全。</p>
+      </div>
+
+      <div class="upload-panels">
+        <!-- 原件上传 -->
+        <div id="uploadPanelA" class="upload-panel">
+          <input type="file" id="fileInputA" accept=".pdf,.doc,.docx">
+          <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="17 8 12 3 7 8"></polyline>
+            <line x1="12" y1="3" x2="12" y2="15"></line>
+          </svg>
+          <h3>原件 (合同A)</h3>
+          <p>拖拽文件到此处，或点击选择</p>
+          <p style="font-size:11px; color:#9ca3af;">支持 PDF、DOC、DOCX</p>
+        </div>
+
+        <!-- VS 分隔 -->
+        <div class="upload-vs">VS</div>
+
+        <!-- 修订件上传 -->
+        <div id="uploadPanelB" class="upload-panel">
+          <input type="file" id="fileInputB" accept=".pdf,.doc,.docx">
+          <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="17 8 12 3 7 8"></polyline>
+            <line x1="12" y1="3" x2="12" y2="15"></line>
+          </svg>
+          <h3>修订件 (合同B)</h3>
+          <p>拖拽文件到此处，或点击选择</p>
+          <p style="font-size:11px; color:#9ca3af;">支持 PDF、DOC、DOCX</p>
+        </div>
+      </div>
+
+      <!-- 开始比对按钮 -->
+      <button id="compareBtn" class="btn btn-primary" disabled style="padding: 12px 40px; font-size: 15px; border-radius: 10px;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="16 3 21 3 21 8"></polyline>
+          <line x1="4" y1="20" x2="21" y2="3"></line>
+          <polyline points="21 16 21 21 16 21"></polyline>
+          <line x1="15" y1="15" x2="21" y2="21"></line>
+          <line x1="4" y1="4" x2="9" y2="9"></line>
+        </svg>
+        开始比对
+      </button>
+
+      <div class="upload-formats">
+        <span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h6v6H9z"/></svg>
+          PDF
+        </span>
+        <span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          Word (.doc/.docx)
+        </span>
+        <span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          本地处理，数据安全
+        </span>
+      </div>
+    </div>
+
+    <!-- ========== Compare View ========== -->
+    <div id="compareView" class="compare-view">
+
+      <!-- Toolbar -->
+      <div class="toolbar">
+        <div class="toolbar-left">
+          <div id="diffCounter" class="diff-counter">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="12" y1="8" x2="12" y2="12"/>
+              <line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+            差异: <span id="diffCountNum" class="count">0</span> 处
+          </div>
+          <div style="display:flex; align-items:center; gap:4px;">
+            <button id="prevDiffBtn" class="diff-nav-btn" disabled title="上一处差异 (↑/k)">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"/></svg>
+            </button>
+            <span id="diffPosition" style="font-size:12px; color:var(--gray-500); min-width:60px; text-align:center;">0 / 0</span>
+            <button id="nextDiffBtn" class="diff-nav-btn" disabled title="下一处差异 (↓/j)">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="toolbar-center">
+          <div id="modeToggle" class="mode-toggle">
+            <button data-mode="strict">严格</button>
+            <button data-mode="normal" class="active">标准</button>
+            <button data-mode="loose">宽松</button>
+          </div>
+        </div>
+
+        <div class="toolbar-right">
+          <button id="sidebarToggle" class="btn btn-sm" title="差异列表">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
+              <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
+            </svg>
+            差异列表
+          </button>
+          <button id="resetBtn" class="btn btn-sm" title="重新开始">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
+            </svg>
+            重新比对
+          </button>
+        </div>
+      </div>
+
+      <!-- Diff Panels -->
+      <div class="diff-panels">
+        <!-- Left Panel (Original) -->
+        <div class="diff-panel">
+          <div class="panel-header">
+            <span class="label-original">● 原件</span>
+            <span id="leftFileName" style="font-weight:400; color:var(--gray-500);"></span>
+          </div>
+          <div id="leftScrollContainer" class="panel-scroll-container">
+            <div class="empty-state">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+              </svg>
+              <p>等待加载文档...</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right Panel (Modified) -->
+        <div class="diff-panel">
+          <div class="panel-header">
+            <span class="label-modified">● 修订件</span>
+            <span id="rightFileName" style="font-weight:400; color:var(--gray-500);"></span>
+          </div>
+          <div id="rightScrollContainer" class="panel-scroll-container">
+            <div class="empty-state">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+              </svg>
+              <p>等待加载文档...</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Diff Sidebar -->
+        <div id="diffSidebar" class="diff-sidebar">
+          <div class="diff-sidebar-header">
+            <h3>差异列表</h3>
+            <button id="sidebarClose" class="btn-icon">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          </div>
+          <div id="diffSidebarBody" class="diff-sidebar-body">
+            <!-- 差异列表项将动态生成 -->
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== Loading Overlay ========== -->
+    <div id="loadingOverlay" class="loading-overlay">
+      <div class="loading-spinner"></div>
+      <div id="loadingText" class="loading-text">正在处理...</div>
+      <div class="loading-progress">
+        <div class="progress-bar">
+          <div id="progressBar" class="progress-bar-fill"></div>
+        </div>
+        <div id="progressDetail" class="progress-detail">准备中...</div>
+      </div>
+    </div>
+
+    <!-- ========== Toast Container ========== -->
+    <div id="toastContainer" class="toast-container"></div>
+
+  </div>
+
+  <!-- App Scripts -->
+  <script src="js/pdf-renderer.js"></script>
+  <script src="js/diff-engine.js"></script>
+  <script src="js/overlay-renderer.js"></script>
+  <script src="js/ocr-handler.js"></script>
+  <script src="js/sync-controller.js"></script>
+  <script src="js/app.js"></script>
+
+  <!-- Initialize App -->
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      try {
+        const app = new App();
+        app.init();
+      } catch (err) {
+        console.error('App init error:', err);
+        // 如果初始化完全失败，显示基本错误提示
+        var uv = document.getElementById('uploadView');
+        if (uv) {
+          uv.innerHTML = '<div style="text-align:center;padding:60px 20px;">' +
+            '<h2 style="color:#dc2626;margin-bottom:12px;">应用加载失败</h2>' +
+            '<p style="color:#6b7280;">' + err.message + '</p>' +
+            '<button onclick="location.reload()" style="margin-top:20px;padding:8px 20px;border:1px solid #d1d5db;border-radius:6px;background:#fff;cursor:pointer;">刷新重试</button>' +
+            '</div>';
+        }
+      }
+    });
+  </script>
+</body>
+</html>
