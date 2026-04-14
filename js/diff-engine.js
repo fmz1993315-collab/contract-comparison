@@ -32,8 +32,28 @@ class DiffEngine {
     let processedA = this._preprocess(textA);
     let processedB = this._preprocess(textB);
 
+    // 空文本快速返回
+    if (!processedA && !processedB) return [];
+    if (!processedA) return [{ id: 1, type: 'insertion', text: processedB, index: 0, length: processedB.length }];
+    if (!processedB) return [{ id: 1, type: 'deletion', text: processedA, index: 0, length: processedA.length }];
+
     // 执行diff
     const diffs = this.dmp.diff_main(processedA, processedB);
+
+    // 防御性检查：diff_main 超时可能返回 null
+    if (!diffs) {
+      // 降级为整段对比
+      if (processedA === processedB) return [];
+      return [{
+        id: 1,
+        type: 'modification',
+        oldText: processedA.substring(0, 100),
+        newText: processedB.substring(0, 100),
+        index: 0,
+        oldLength: processedA.length,
+        newLength: processedB.length,
+      }];
+    }
 
     // 优化diff结果（语义清理）
     this.dmp.diff_cleanupSemantic(diffs);
